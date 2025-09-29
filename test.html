@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Цифровая гигиена — презентация + квиз</title>
+  <style>
+    :root{
+      --bg:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --panel:#0b1020;
+      --line:#1f2937; --brand:#06b6d4; --ok:#22c55e; --bad:#ef4444;
+    }
+    html,body{height:100%}
+    body{margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
+      color:var(--text); background:radial-gradient(1200px 800px at 10% 10%, #0b1226 0%, #0f172a 45%, #0b1226 100%);
+      display:flex; align-items:center; justify-content:center; padding:24px}
+    .app{max-width:900px; width:100%}
+    .card{background:linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.85)); border:1px solid var(--line);
+      border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,.45); overflow:hidden}
+    .header{display:flex; gap:12px; align-items:center; padding:18px 22px; background:linear-gradient(90deg,#0ea5e9,#06b6d4); color:white}
+    .logo{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.15);display:grid;place-items:center;font-size:22px}
+    .title{font-weight:800}
+    .subtitle{font-size:12px;opacity:.9}
+    .content{padding:22px; min-height:600px;} /* фиксированная высота для встраивания */
+
+    .progress{height:10px;background:#0b1020;border-radius:999px;overflow:hidden;border:1px solid var(--line);margin:4px 0 18px}
+    .bar{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#06b6d4);transition:width .35s ease}
+
+    .slide{display:none}
+    .slide.active{display:block}
+    .slide-emoji{font-size:48px; line-height:1}
+    .slide h2{margin:8px 0 6px}
+    .slide p{color:var(--muted)}
+
+    .qnum{font-weight:700; color:var(--muted)}
+    .question{font-size:22px; font-weight:900; margin:8px 0 14px}
+    .options{display:grid; gap:12px}
+    .btn{border:1px solid var(--line); background:var(--panel); color:var(--text); padding:14px 16px; border-radius:14px; cursor:pointer; text-align:left; transition:transform .06s ease, border-color .2s ease, background .2s ease}
+    .btn:hover{transform:translateY(-1px); border-color:#2b384b}
+    .btn[disabled]{opacity:.55; cursor:not-allowed}
+    .btn.correct{border-color:rgba(34,197,94,.6); background:linear-gradient(0deg, rgba(34,197,94,.12), transparent)}
+    .btn.wrong{border-color:rgba(239,68,68,.6); background:linear-gradient(0deg, rgba(239,68,68,.12), transparent)}
+
+    .explanation{margin-top:14px; padding:14px 16px; background:#0c1326; border:1px solid var(--line); border-radius:14px; line-height:1.5}
+
+    .controls{display:flex; gap:12px; justify-content:space-between; align-items:center; margin-top:18px}
+    .pill{padding:10px 14px; border-radius:999px; border:1px solid var(--line); color:var(--muted)}
+    .primary{background:linear-gradient(90deg,#0ea5e9,#06b6d4); color:white; border:none; padding:12px 16px; border-radius:12px; font-weight:800; cursor:pointer}
+    .primary:disabled{opacity:.6; cursor:not-allowed}
+
+    .center{display:grid; place-items:center; gap:14px; text-align:center}
+    .score{font-size:18px; color:var(--muted)}
+
+    .review{margin-top:20px}
+    details{background:#0c1326; border:1px solid var(--line); border-radius:12px; padding:10px 12px}
+    details+details{margin-top:10px}
+    summary{cursor:pointer; font-weight:700}
+
+    .test-fail{margin:12px 0; padding:10px 12px; border-radius:10px; border:1px solid #7f1d1d; background:#450a0a; color:#fecaca}
+    .test-fail code{color:#fff; white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <div class="header">
+        <div class="logo">🛡️</div>
+        <div>
+          <div class="title">Цифровая гигиена</div>
+          <div class="subtitle">Презентация из 10 слайдов → Квиз из 15 вопросов</div>
+        </div>
+      </div>
+      <div class="content" id="stage">Загрузка…</div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    // ===== Показ ошибок прямо на странице (чтобы не было «пусто») =====
+    window.addEventListener('error', function (e) {
+      try {
+        const host = document.getElementById('stage');
+        const box = document.createElement('div');
+        box.className = 'test-fail';
+        box.innerHTML =
+          '<b>Ошибка выполнения скрипта</b><br><code>' +
+          (e && e.message ? e.message : 'Unknown') +
+          (e && e.lineno ? ('\\nСтрока: ' + e.lineno) : '') +
+          '</code>';
+        host.innerHTML = '';
+        host.appendChild(box);
+      } catch(_) {}
+    });
+
+    const PASS_THRESHOLD = 0.8; // 80%
+
+    // --- 10 слайдов ---
+    const SLIDES = [
+      { icon:'🖱️', title:'Думаем перед кликом', text:'Не открывай всё подряд — сначала оцени, кто отправил и чего хочет.' },
+      { icon:'📧', title:'Почта: осторожно со «срочно!»', text:'Странные письма проверяй через официальный сайт/номер, а не по ссылке.' },
+      { icon:'📎', title:'Вложения', text:'Архивы и документы могут быть опасны, особенно если просят «включить содержимое/макросы».' },
+      { icon:'🎁', title:'Призы и всплывашки', text:'«Вы выиграли!» — почти всегда обман. Закрой вкладку.' },
+      { icon:'🔑', title:'Пароли', text:'Лучше длинная фраза. Ещё лучше — менеджер паролей и уникальные пароли везде.' },
+      { icon:'💬', title:'Мессенджеры', text:'Файлы/ссылки от «знакомых» проверяй — аккаунты подделывают.' },
+      { icon:'💾', title:'Флешки', text:'Найденная флешка — риск. Не подключай или проверь на изолированной машине.' },
+      { icon:'🌐', title:'Ссылки', text:'Короткие/подозрительные ссылки разворачивай и смотри адрес.' },
+      { icon:'👥', title:'Подделка сообщений', text:'Если просят деньги — перезвони по другому каналу.' },
+      { icon:'🔒', title:'Блокировка ПК', text:'Уходя, блокируй компьютер (Win+L / ⌥⌘Q).'}
+    ];
+
+    // --- 15 вопросов ---
+    const QUESTIONS_ORIGINAL = [
+      { q: "Письмо от 'банка' просит срочно ввести данные по ссылке. Первое действие?",
+        options: ["Сразу перейти и ввести данные","Ответить письмом","Позвонить в банк по номеру с сайта и уточнить","Переслать коллегам"],
+        correct: 2,
+        why: "Не переходи по ссылке. Проверь запрос через официальный сайт/номер банка." },
+      { q: "В письме вложение называется 'Счёт_08.09.pdf.exe'. Что сделать?",
+        options: ["Открыть — похоже на счёт","Переименовать в .pdf и открыть","Не открывать, сообщить ИТ/удалить письмо","Переслать коллегам на всякий"],
+        correct: 2,
+        why: "Двойное расширение (.pdf.exe) — типичный трюк злоумышленников. Такие файлы не открываем: лучше удалить и уведомить ИТ." },
+      { q: "В браузере всплыло 'Вы выиграли приз!'. Твои действия?",
+        options: ["Ввести данные","Закрыть окно/вкладку","Поделиться в чате","Сделать скрин и отправить всем"],
+        correct: 1,
+        why: "Это приманка. Ничего не заполняй, просто закрой вкладку." },
+      { q: "Пароль для почты лучше сделать…",
+        options: ["12345 + дата рождения","Одной длинной фразой из нескольких слов","Имя+фамилия","Таким же, как дома"],
+        correct: 1,
+        why: "Длинная фраза запоминается и её сложнее угадать. Уникальна для каждого сайта." },
+      { q: "В чате прислали .exe 'обновление'. Как поступим?",
+        options: ["Запущу сразу","Скачаю, но не запущу","Не скачиваю и уточню у ИТ/руководителя","Переименую в .txt"],
+        correct: 2,
+        why: "Исполняемые файлы из чатов — риск. Уточни источник, не запускай без проверки." },
+      { q: "Найденную флешку подключили к ПК. Что безопаснее?",
+        options: ["Открыть сразу всё","Проверить антивирусом/ИТ или не подключать вовсе","Скопировать только фото","Сформатировать и работать"],
+        correct: 1,
+        why: "Неизвестные носители часто несут вредонос. Лучше не трогать или проверять изолированно." },
+      { q: "Ссылка короткая: bit.ly/… Что сделаем?",
+        options: ["Открою сразу","Разверну и проверю адрес перед кликом","Перешлю друзьям","Сохраню в закладки"],
+        correct: 1,
+        why: "Сокращатели скрывают адрес. Используй превью/разворачиватели." },
+      { q: "Excel просит 'разрешить редактирование' и 'включить содержимое'. Это…",
+        options: ["Норма для любых файлов","Может быть опасно — включать только если доверяешь","Способ ускорить Excel","Требование Windows"],
+        correct: 1,
+        why: "Такие запросы включают макросы/встроенный контент. Включай лишь для нужных и доверенных файлов." },
+      { q: "Сообщение от 'знакомого' с просьбой срочно перевести деньги. Действие?",
+        options: ["Перевести сразу","Уточнить голосом/звонком, что это он","Спросить у коллег","Отправить смайлик"],
+        correct: 1,
+        why: "Аккаунты подменяют. Перепроверь по другому каналу." },
+      { q: "Нужно передать пароль коллеге. Как лучше?",
+        options: ["Написать в общем чате","Через менеджер паролей/защищённую заметку","Сказать вслух","На стикер на монитор"],
+        correct: 1,
+        why: "Используй безопасный шаринг с ограничением времени и аудита." },
+      { q: "Браузер предлагает сохранить пароль. Что учитывать?",
+        options: ["Всегда сохраняю","Никогда не сохраняю","Можно сохранять на рабочем ПК с блокировкой и уникальными паролями","Сохраняю в заметках телефона"],
+        correct: 2,
+        why: "Сохранять можно, если ПК защищён и пароли уникальны. Ещё лучше — менеджер паролей." },
+      { q: "Не открывается сайт компании: опечатка в адресе. Что делать?",
+        options: ["Заходить на то, что открывается","Исправить адрес вручную или зайти через закладку","Попросить ссылку у первого встречного","Искать похожий сайт"],
+        correct: 1,
+        why: "Опечатка может вести на подделку. Вводи правильный адрес или используй закладки." },
+      { q: "На флешке важные файлы. Что сделать заранее?",
+        options: ["Ничего, пусть лежит","Сделать копию в облако/сетевую папку","Никогда не вынимать флешку","Подписать маркером"],
+        correct: 1,
+        why: "Флешки теряются/ломаются. Резервная копия спасает." },
+      { q: "Письмо с вложением .zip от неизвестного. Правильный шаг?",
+        options: ["Скачать и открыть","Сначала проверить у ИТ/антивирусом или удалить","Переслать всем","Ответить благодарностью"],
+        correct: 1,
+        why: "Архивы часто маскируют опасные файлы. Проверяй или удаляй." },
+      { q: "Уходя с рабочего места, что сделать с компьютером?",
+        options: ["Оставить как есть","Повернуть монитор","Заблокировать экран (Win+L)","Положить бумажку на клавиатуру"],
+        correct: 2,
+        why: "Блокировка экрана защищает от чужого доступа к почте и документам." }
+    ];
+
+    // Состояние
+    let QUESTIONS = shuffleArray([...QUESTIONS_ORIGINAL]);
+    let state = { index:0, score:0, answers:[] };
+    const stage = document.getElementById('stage');
+
+    // ----- Презентация -----
+    function renderSlides(){
+      let i = 0; show(i);
+      function show(idx){
+        const s = SLIDES[idx];
+        stage.innerHTML = `
+          <div class="slide active">
+            <div class="slide-emoji">${s.icon}</div>
+            <h2>${escapeHTML(s.title)}</h2>
+            <p>${escapeHTML(s.text)}</p>
+            <div class="controls" style="justify-content:flex-end">
+              <button class="primary" id="next">${idx < SLIDES.length-1 ? 'Дальше' : 'Начать квиз'}</button>
+            </div>
+          </div>`;
+        document.getElementById('next').onclick = () => {
+          if (idx < SLIDES.length-1) show(idx+1); else { QUESTIONS = shuffleArray([...QUESTIONS_ORIGINAL]); renderQuiz(); }
+        };
+      }
+    }
+
+    // ----- Квиз -----
+    function renderQuiz(){
+      const total = QUESTIONS.length;
+      if (state.index >= total) return renderResult();
+      const q = QUESTIONS[state.index];
+
+      const order = [0,1,2,3]; shuffleArray(order);
+
+      stage.innerHTML = `
+        <div class="qnum">Вопрос ${state.index + 1} из ${total}</div>
+        <div class="progress"><div class="bar" style="width:${(state.index/total)*100}%"></div></div>
+        <div class="question">${escapeHTML(q.q)}</div>
+        <div class="options">
+          ${order.map((origIdx,renderIdx)=>`<button class="btn" data-idx="${renderIdx}">${escapeHTML(q.options[origIdx])}</button>`).join('')}
+        </div>
+        <div class="controls">
+          <div class="pill" id="note">Выбери вариант ⟶</div>
+          <button class="primary" id="next" disabled>Дальше</button>
+        </div>`;
+
+      const buttons = [...stage.querySelectorAll('.btn')];
+      const nextBtn = stage.querySelector('#next');
+      const note = stage.querySelector('#note');
+      let answered = false;
+
+      buttons.forEach(btn => btn.addEventListener('click', ()=>{
+        if (answered) return; answered = true;
+        const chosenRendered = Number(btn.dataset.idx);
+        const chosenOriginal = order[chosenRendered];
+        const correctOriginal = q.correct;
+        const isCorrect = chosenOriginal === correctOriginal;
+        if (isCorrect) state.score++;
+        state.answers[state.index] = {chosenOriginal, correct: correctOriginal, isCorrect};
+        buttons.forEach((b,i)=>{ b.disabled = true; if (order[i]===correctOriginal) b.classList.add('correct'); if (i===chosenRendered && !isCorrect) b.classList.add('wrong'); });
+        nextBtn.disabled = false; note.textContent = isCorrect ? 'Верно! 👍' : 'Ошибка.';
+        const exp = document.createElement('div'); exp.className = 'explanation';
+        exp.innerHTML = `<b>Правильный ответ:</b> ${escapeHTML(q.options[correctOriginal])}<br>${escapeHTML(q.why)}`;
+        stage.querySelector('.options').after(exp);
+      }));
+
+      nextBtn.addEventListener('click', ()=>{ state.index++; renderQuiz(); });
+    }
+
+    // ----- Результат -----
+    function renderResult(){
+      const total = QUESTIONS.length;
+      const pct = state.score / total;
+      const pctText = Math.round(pct*100);
+
+      let msgBody = '';
+      if (pct > 0.8) {
+        msgBody = 'Спасибо за ответственность к цифровой гигиене! Вы опытный пользователь, и коллегам с вами повезло — вы не пропадёте.';
+      } else if (pct < 0.5) {
+        msgBody = 'Оценка ниже 50%. Настоятельно рекомендуем пересмотреть слайды и пройти квиз повторно. Текущие знания могут навредить не только вам лично, но и компании.';
+      } else {
+        msgBody = 'Рекомендуем пересмотреть слайды и пройти квиз ещё раз. Это важно: пробелы в знаниях могут привести к рискам для вас и компании.';
+      }
+
+      const resultsDetails = `
+        <details>
+          <summary style="font-weight:800; font-size:18px; cursor:pointer">просмотреть результаты</summary>
+          <div class="review" style="margin-top:12px">
+            ${state.answers.map((a,i)=>{
+              const q = QUESTIONS[i];
+              const chosenTxt = a && typeof a.chosenOriginal === 'number' ? q.options[a.chosenOriginal] : '—';
+              const correctTxt = q.options[a.correct];
+              const isOk = a && a.isCorrect;
+              return `
+                <div style="padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#0c1326; margin-bottom:10px">
+                  <div><b>${i+1}. ${escapeHTML(q.q)}</b> — <span style="color:${isOk ? 'var(--ok)':'var(--bad)'}">${isOk?'верно':'ошибка'}</span></div>
+                  <div style="margin-top:6px"><b>Ваш ответ:</b> ${escapeHTML(chosenTxt || '')}</div>
+                  <div><b>Правильный ответ:</b> ${escapeHTML(correctTxt)}</div>
+                  <div class="explanation" style="margin-top:8px">${escapeHTML(q.why)}</div>
+                </div>`;
+            }).join('')}
+          </div>
+        </details>`;
+
+      stage.innerHTML = `
+        ${resultsDetails}
+        <div class="center" style="margin-top:16px">
+          <div class="score">Результат: <b>${state.score}</b> из <b>${total}</b> (${pctText}%). Порог: ≥ 80%.</div>
+          <p style="margin:6px 0 0; color:var(--muted)">${escapeHTML(msgBody)}</p>
+          <div class="controls" style="justify-content:center">
+            <button class="primary" id="retry">Пройти ещё раз</button>
+          </div>
+        </div>`;
+
+      document.getElementById('retry').onclick = () => {
+        state = { index:0, score:0, answers:[] };
+        QUESTIONS = shuffleArray([...QUESTIONS_ORIGINAL]);
+        renderSlides();
+      };
+    }
+
+    // ----- Утилиты -----
+    function shuffleArray(arr){
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+    function escapeHTML(str){
+      return String(str).replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+    }
+
+    // ----- Самопроверки -----
+    function runTests(){
+      const errs = [];
+      if (!Array.isArray(SLIDES) || SLIDES.length !== 10) errs.push(`Должно быть 10 слайдов, сейчас: ${SLIDES.length}.`);
+      if (!Array.isArray(QUESTIONS_ORIGINAL) || QUESTIONS_ORIGINAL.length !== 15) errs.push(`Должно быть 15 вопросов, сейчас: ${QUESTIONS_ORIGINAL.length}.`);
+      if (typeof renderSlides!=='function') errs.push('renderSlides не определён');
+      if (typeof renderQuiz!=='function') errs.push('renderQuiz не определён');
+      if (escapeHTML('&<>"') !== '&amp;&lt;&gt;&quot;') errs.push('escapeHTML работает некорректно.');
+      if (errs.length){
+        const warn = document.createElement('div');
+        warn.className = 'test-fail';
+        warn.innerHTML = '<b>Найдены проблемы конфигурации:</b><br><code>'+errs.join('\\n')+'</code>';
+        stage.prepend(warn);
+        console.error('[QUIZ TESTS]', errs);
+      }
+    }
+
+    // init
+    renderSlides();
+    runTests();
+  </script>
+</body>
+</html>
